@@ -12,17 +12,17 @@ int main()
 {
 	RingBuffer ringBuffer;
 
-	//int arr[4];
-	//arr[0] = 4;
-	//arr[1] = 3;
-	//arr[2] = 2;
-	//arr[3] = 1;
+	int arr[4];
+	arr[0] = 4;
+	arr[1] = 3;
+	arr[2] = 2;
+	arr[3] = 1;
 
-	//srand(10);
+	srand(10);
 
-	////----------------------------------------
-	//// 테스트 첫번째
-	////----------------------------------------
+	//----------------------------------------
+	// 테스트 첫번째
+	//----------------------------------------
 	//ringBuffer.Enqueue((char*)&arr, 16);
 	//ringBuffer.Enqueue((char*)&arr, 16);
 	//ringBuffer.Enqueue((char*)&arr, 16);
@@ -31,7 +31,7 @@ int main()
 	//ringBuffer.Enqueue((char*)&arr, 16);
 
 
-	//char Buffer[100];
+	char Buffer[100];
 	//ringBuffer.Dequeue(Buffer, 16);
 
 	//arr[0] = 8;
@@ -41,9 +41,9 @@ int main()
 	//ringBuffer.Enqueue((char*)&arr, 16);
 	//ringBuffer.Enqueue((char*)&arr, 4);
 
-	////----------------------------------------
-	//// 테스트 두번째 
-	////----------------------------------------
+	//////----------------------------------------
+	////// 테스트 두번째 
+	//////----------------------------------------
 	//ringBuffer.ClearBuffer();
 
 	//ringBuffer.Enqueue((char*)&arr, 16);
@@ -100,41 +100,40 @@ int main()
 		//}
 		//Sleep(200);
 
-		//-----------------------------------------------------
-		// bool type 테스트
-		//-----------------------------------------------------
-		int enqueRtn = ringBuffer.Enqueue(g_Buffer+ idx, len);
-		int dequeueRtn = ringBuffer.Dequeue(tempBuffer, (rand() % 81) + 1);
+		////-----------------------------------------------------
+		//// bool type 테스트
+		////-----------------------------------------------------
 
-		tempBuffer[dequeueRtn] = '\0';
+		if (g_MainCount == 6)
+			int a = 10;
+
+
+		int enqueRtn = ringBuffer.Enqueue(g_Buffer+ idx, len);
+		memset(tempBuffer, 0, sizeof(tempBuffer));
+		int dequeueRtn = ringBuffer.Dequeue(tempBuffer, (rand() % 81) + 1);
+		
 		printf("%s", tempBuffer);
+		//printf("equeueRtn:%d  dequeueRtn:%d idx:%d\n", enqueRtn,dequeueRtn,idx);
 
 		idx += enqueRtn;
-		max = (max - len);
+		max = (max - enqueRtn);
+
 		if (max == 0)
 		{
 			max = 81;
 			len  = (rand() % max) + 1; //1~ 81
-			idx = 0;
+			idx = idx - 81;
+			//idx = 0;
 		}
 		else
 		{
 			len = (rand() % max) + 1; //1~ 81
 		}
-
-		//max = (max - len);
-		//if (max == 0)
-		//{
-		//	max = 81;
-		//	len  = (rand() % max) + 1; //1~ 81
-		//	idx = 0;
-		//}
-		//else
-		//{
-		//	len = (rand() % max) + 1; //1~ 81
-		//}
-		Sleep(200);
+		++g_MainCount;
+		//Sleep(200);
 	}
-	
+
+
+
 
 }

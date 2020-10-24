@@ -6,7 +6,7 @@ RingBuffer::RingBuffer()
     m_Front(0),
     m_Rear(0),
     m_UsedSize(0),
-    m_FreeSize(RING_BUFFER_SIZE)
+    m_FreeSize(RING_BUFFER_SIZE-1)
 {
 }
 
@@ -30,6 +30,10 @@ int RingBuffer::Enqueue(char* buffer, int32_t size)
 
     int diff = 0;
     int directSize = GetDirectEnqueueSize();
+    //-----------------------------------
+    // Enqueue 들어오면 m_Rear는 쁠쁠 먼저하고, Enqeue를한다.
+    //-----------------------------------
+    m_Rear = (m_Rear + 1) % RING_BUFFER_SIZE;
 
     //-----------------------------------
     // 인자로 들어온 사이즈가  연속된 사이즈 보다 더 크다면, memcpy를 나눠서해야한다
@@ -37,16 +41,17 @@ int RingBuffer::Enqueue(char* buffer, int32_t size)
     if (directSize < size)
     {
         memcpy(m_Buffer + m_Rear, buffer, directSize);
-        m_Rear = (m_Rear + directSize) % RING_BUFFER_SIZE;
+        m_Rear = (m_Rear +directSize-1) % RING_BUFFER_SIZE;
         diff = size - directSize;
 
+        m_Rear = (m_Rear + 1) % RING_BUFFER_SIZE;
         memcpy(m_Buffer + m_Rear, buffer + directSize, diff);
-        m_Rear = (m_Rear + diff) % RING_BUFFER_SIZE;
+        m_Rear = (m_Rear+ diff-1) % RING_BUFFER_SIZE;
     }
     else
     {
         memcpy(m_Buffer + m_Rear, buffer, size);
-        m_Rear = (m_Rear + size) % RING_BUFFER_SIZE;
+        m_Rear = (m_Rear +size-1) % RING_BUFFER_SIZE;
     }
 
     m_UsedSize += size;
@@ -66,22 +71,28 @@ int RingBuffer::Dequeue(char* buffer, int32_t size)
     }
     int directSize = GetDirectDequeueSize();
 
+    //-----------------------------------
+    // Enqueue 들어오면 m_Rear는 쁠쁠 먼저하고, Enqeue를한다.
+    //-----------------------------------
+    m_Front = (m_Front + 1) % RING_BUFFER_SIZE;
     //-------------------------------------------
     // 연속할당할수있는 사이즈가 들어온 사이즈보다 작다면 두번나눠서 디큐를 해야함.
     //-------------------------------------------
     if (directSize < size)
     {
         memcpy(buffer, m_Buffer + m_Front, directSize);
-        m_Front = (m_Front + directSize) % RING_BUFFER_SIZE;;
+        m_Front = (m_Front + directSize -1) % RING_BUFFER_SIZE;;
 
         int diff = size - directSize;
+        m_Front = (m_Front + 1) % RING_BUFFER_SIZE;
+        char buffTemp[100];
         memcpy(buffer + directSize, m_Buffer + m_Front, diff);
-        m_Front = (m_Front + diff) % RING_BUFFER_SIZE;
+        m_Front = (m_Front+diff -1 ) % RING_BUFFER_SIZE;
     }
     else
     {
         memcpy(buffer, m_Buffer + m_Front, size);
-        m_Front = (m_Front + size) % RING_BUFFER_SIZE;
+        m_Front = (m_Front+size -1 ) % RING_BUFFER_SIZE;
     }
     m_UsedSize -= size;
     m_FreeSize += size;
@@ -179,20 +190,26 @@ int32_t RingBuffer::GetDirectEnqueueSize() const
 
     int directSize = 0;
 
+
     //-----------------------------------
     // mRear < mFront < 인덱스 끝
     // 이러면  연속된 인덱스는 m_Front 전까지다.
     //-----------------------------------
-    if (m_Rear < m_Front && m_Front <= (RING_BUFFER_SIZE - 1))
+    //if (m_Rear < m_Front && m_Front <= (RING_BUFFER_SIZE - 1))
+    //{
+    //    directSize = m_Front - m_Rear;
+    //}
+
+    if (m_Rear < m_Front)
     {
-        directSize = m_Front - m_Rear;
+        directSize = m_Front - m_Rear-1;
     }
     //-----------------------------------
     // 그것이 아니라면, m_Rear ~ 인덱스끝까지가 연속된 메모리 할당범위다.
     //-----------------------------------
     else
     {
-        directSize = ((RING_BUFFER_SIZE - 1) - m_Rear)+1;
+        directSize = (RING_BUFFER_SIZE - 1) - m_Rear;
     }
     
     return directSize;
@@ -208,16 +225,26 @@ int32_t RingBuffer::GetDirectDequeueSize() const
         return 0;
     }
 
-    int32_t directSize = 0;
 
-    if (m_Front <= (RING_BUFFER_SIZE - 1) && 0 <= m_Rear)
+    int32_t directSize = 0;
+    //일반적인 경우
+    if (m_Front < m_Rear)
     {
-        directSize = ((RING_BUFFER_SIZE - 1) - m_Front)+1;
+        directSize = m_Rear - m_Front;
     }
     else
     {
-        directSize = m_Rear- m_Front;
+        directSize = (RING_BUFFER_SIZE - 1) - m_Front;
     }
+
+    //if (m_Front <= (RING_BUFFER_SIZE - 1) && 0 <= m_Rear)
+    //{
+    //    directSize = (RING_BUFFER_SIZE - 1) - m_Front;
+    //}
+    //else
+    //{
+    //    directSize = m_Rear- m_Front;
+    //}
 
     return directSize;
 
