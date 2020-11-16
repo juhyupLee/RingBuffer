@@ -1,12 +1,14 @@
 #include <iostream>
 #include "RingBuffer.h"
+#include <iostream>
+#include <Windows.h>
+#include "LogManager.h"
+
 RingBuffer::RingBuffer()
     :
     m_Buffer{ 0, },
     m_Front(0),
-    m_Rear(0),
-    m_UsedSize(0),
-    m_FreeSize(RING_BUFFER_SIZE-1)
+    m_Rear(0)
 {
 }
 
@@ -14,237 +16,242 @@ RingBuffer::~RingBuffer()
 {
 }
 
-
-int g_Count = 0;
-int g_EnqueueCount = 0;
-
 int RingBuffer::Enqueue(char* buffer, int32_t size)
 {
+    int32_t copyFront = m_Front;
+    int32_t copyRear = m_Rear;
+    int32_t copyFreeSize = GetFreeSize(copyFront,copyRear);
+
     //-----------------------------------
     // 링버퍼의 남은 사이즈가 들어온 사이즈보다 작다면 size를 프리사이즈로바꿈
     //-----------------------------------
-    if (m_FreeSize < size)
+    if (copyFreeSize < size)
     {
-        size = m_FreeSize;
+        size = copyFreeSize;
+        if (size <= 0)
+        {
+            return 0;
+        }
     }
 
-    int diff = 0;
-    int directSize = GetDirectEnqueueSize();
+    int32_t diff = 0;
+    int32_t directSize = GetDirectEnqueueSize(copyFront, copyRear);
+
     //-----------------------------------
     // Enqueue 들어오면 m_Rear는 쁠쁠 먼저하고, Enqeue를한다.
     //-----------------------------------
-    m_Rear = (m_Rear + 1) % RING_BUFFER_SIZE;
+    copyRear = (copyRear + 1) % RING_BUFFER_SIZE;
 
     //-----------------------------------
     // 인자로 들어온 사이즈가  연속된 사이즈 보다 더 크다면, memcpy를 나눠서해야한다
     //-----------------------------------
     if (directSize < size)
     {
-        memcpy(m_Buffer + m_Rear, buffer, directSize);
-        m_Rear = (m_Rear +directSize-1) % RING_BUFFER_SIZE;
+        memcpy(m_Buffer + copyRear, buffer, directSize);
+        copyRear = (copyRear +directSize-1) % RING_BUFFER_SIZE;
         diff = size - directSize;
 
-        m_Rear = (m_Rear + 1) % RING_BUFFER_SIZE;
-        memcpy(m_Buffer + m_Rear, buffer + directSize, diff);
-        m_Rear = (m_Rear+ diff-1) % RING_BUFFER_SIZE;
+        copyRear = (copyRear + 1) % RING_BUFFER_SIZE;
+        memcpy(m_Buffer + copyRear, buffer + directSize, diff);
+        copyRear = (copyRear + diff-1) % RING_BUFFER_SIZE;
     }
     else
     {
-        memcpy(m_Buffer + m_Rear, buffer, size);
-        m_Rear = (m_Rear +size-1) % RING_BUFFER_SIZE;
+        memcpy(m_Buffer + copyRear, buffer, size);
+        copyRear = (copyRear +size-1) % RING_BUFFER_SIZE;
     }
 
-    m_UsedSize += size;
-    m_FreeSize -= size;
+    m_Rear = copyRear;
+
     return size;
 }
 
 int RingBuffer::Dequeue(char* buffer, int32_t size)
 {
+    int copyRear = m_Rear;
+    int copyFront = m_Front;
+    int copyUsedSize = GetUsedSize(copyFront, copyRear);
 
     //-------------------------------------------
     //링버퍼에 사용중인 사이즈가 인자로 들어온 사이즈보다 작으면 실패
     //-------------------------------------------
-    if (m_UsedSize < size)
+    if (copyUsedSize < size)
     {
-        size = m_UsedSize;
+        size = copyUsedSize;
+        if (size <= 0)
+        {
+            return 0;
+        }
     }
-    int directSize = GetDirectDequeueSize();
+
+    int directSize = GetDirectDequeueSize(copyFront,copyRear);
 
     //-----------------------------------
     // Enqueue 들어오면 m_Rear는 쁠쁠 먼저하고, Enqeue를한다.
     //-----------------------------------
-    m_Front = (m_Front + 1) % RING_BUFFER_SIZE;
+    copyFront = (copyFront + 1) % RING_BUFFER_SIZE;
     //-------------------------------------------
     // 연속할당할수있는 사이즈가 들어온 사이즈보다 작다면 두번나눠서 디큐를 해야함.
     //-------------------------------------------
     if (directSize < size)
     {
-        memcpy(buffer, m_Buffer + m_Front, directSize);
-        m_Front = (m_Front + directSize -1) % RING_BUFFER_SIZE;;
+        memcpy(buffer, m_Buffer + copyFront, directSize);
+        copyFront = (copyFront + directSize -1) % RING_BUFFER_SIZE;;
 
         int diff = size - directSize;
-        m_Front = (m_Front + 1) % RING_BUFFER_SIZE;
-        char buffTemp[100];
-        memcpy(buffer + directSize, m_Buffer + m_Front, diff);
-        m_Front = (m_Front+diff -1 ) % RING_BUFFER_SIZE;
+        copyFront = (copyFront + 1) % RING_BUFFER_SIZE;
+        memcpy(buffer + directSize, m_Buffer + copyFront, diff);
+        copyFront = (copyFront +diff -1 ) % RING_BUFFER_SIZE;
     }
     else
     {
-        memcpy(buffer, m_Buffer + m_Front, size);
-        m_Front = (m_Front+size -1 ) % RING_BUFFER_SIZE;
+        memcpy(buffer, m_Buffer + copyFront, size);
+        copyFront = (copyFront +size -1 ) % RING_BUFFER_SIZE;
     }
-    m_UsedSize -= size;
-    m_FreeSize += size;
+
+    m_Front = copyFront;
+ 
     return size;
 }
-//bool RingBuffer::Enqueue(char* buffer, int32_t size)
-//{
-//    //-----------------------------------
-//    // 링버퍼의 남은 사이즈가 들어온 사이즈보다 작다면 실패
-//    //-----------------------------------
-//    if (m_FreeSize< size)
-//    {
-//        return false;
-//    }
-//
-//    int diff = 0;
-//    int directSize = GetDirectEnqueueSize();
-//
-//    //-----------------------------------
-//    // 인자로 들어온 사이즈가  연속된 사이즈 보다 더 크다면, memcpy를 나눠서해야한다
-//    //-----------------------------------
-//    if (directSize < size)
-//    {
-//        memcpy(m_Buffer+m_Rear, buffer, directSize);
-//        m_Rear = (m_Rear+directSize)%RING_BUFFER_SIZE;
-//        diff = size - directSize;
-//
-//        memcpy(m_Buffer+ m_Rear, buffer+ directSize, diff);
-//        m_Rear = (m_Rear + diff) % RING_BUFFER_SIZE;
-//    }
-//    else
-//    {
-//        memcpy(m_Buffer+ m_Rear, buffer,size);
-//        m_Rear =(m_Rear+ size)% RING_BUFFER_SIZE;
-//    }
-//    
-//    m_UsedSize += size;
-//    m_FreeSize -= size;
-//    return true;
-//}
-//
-//bool RingBuffer::Dequeue(char* buffer, int32_t size)
-//{
-//
-//    //-------------------------------------------
-//    //링버퍼에 사용중인 사이즈가 인자로 들어온 사이즈보다 작으면 실패
-//    //-------------------------------------------
-//    if (m_UsedSize < size)
-//    {
-//        return false;
-//    }
-//    int directSize = GetDirectDequeueSize();
-//
-//    //-------------------------------------------
-//    // 연속할당할수있는 사이즈가 들어온 사이즈보다 작다면 두번나눠서 디큐를 해야함.
-//    //-------------------------------------------
-//    if (directSize < size)
-//    {
-//        memcpy(buffer, m_Buffer + m_Front, directSize);
-//        m_Front = (m_Front + directSize) % RING_BUFFER_SIZE;;
-//
-//        int diff = size - directSize;
-//        memcpy(buffer+ directSize, m_Buffer + m_Front, diff);
-//        m_Front = (m_Front + diff) % RING_BUFFER_SIZE;
-//    }
-//    else
-//    {
-//        memcpy(buffer, m_Buffer + m_Front, size);
-//        m_Front = (m_Front + size) % RING_BUFFER_SIZE;
-//    }
-//    m_UsedSize -= size;
-//    m_FreeSize += size;
-//    return true;
-//}
 
 int32_t RingBuffer::GetFreeSize() const
 {
-    return int32_t();
+    int freeSize = 0;
+
+    if ((m_Rear + 1) % RING_BUFFER_SIZE == m_Front)
+    {
+        return 0;
+    }
+    if (m_Front > m_Rear)
+    {
+        freeSize = m_Front - m_Rear-1;
+    }
+    else
+    {
+        freeSize = m_Front + (RING_BUFFER_SIZE - 1) - m_Rear;
+    }
+    return freeSize;
 }
 
 int32_t RingBuffer::GetUsedSize() const
 {
-    return int32_t();
+    int32_t usedSize = 0;
+
+    if (m_Rear == m_Front)
+    {
+        return 0;
+    }
+    if (m_Front < m_Rear)
+    {
+        usedSize = m_Rear - m_Front;
+    }
+    else
+    {
+        usedSize = m_Rear + (RING_BUFFER_SIZE - 1) - m_Front + 1;
+    }
+    return usedSize;
+}
+
+int32_t RingBuffer::GetFreeSize(int32_t front, int32_t rear) const
+{
+    int freeSize = 0;
+    if ((rear + 1) % RING_BUFFER_SIZE == front)
+    {
+        return 0;
+    }
+    if (front > rear)
+    {
+        freeSize = front - rear-1;
+    }
+    else
+    {
+        freeSize = front + (RING_BUFFER_SIZE - 1) - rear;
+    }
+
+    return freeSize;
+}
+
+int32_t RingBuffer::GetUsedSize(int32_t front, int32_t rear) const
+{
+    int32_t usedSize = 0;
+
+    if (rear == front)
+    {
+        return 0;
+    }
+    if (front < rear)
+    {
+        usedSize = rear - front ;
+    }
+    else
+    {
+        usedSize = rear+ (RING_BUFFER_SIZE - 1) - front + 1;
+    }
+
+    return usedSize;
 }
 
 int32_t RingBuffer::GetDirectEnqueueSize() const
 {
-    //-----------------------------------
+     //-----------------------------------
     // 링버퍼의 사이즈가 꽉찼다면, Direct Size를 구할수 없다. 0반환
     //-----------------------------------
-    if ((m_Rear + 1) % RING_BUFFER_SIZE == m_Front)
+    int copyFront = m_Front;
+    int copyRear = m_Rear;
+
+    if ((copyRear + 1) % RING_BUFFER_SIZE == copyFront)
     {
         return 0;
     }
 
     int directSize = 0;
-
+    int rearNext = (copyRear + 1) % RING_BUFFER_SIZE;
 
     //-----------------------------------
     // mRear < mFront < 인덱스 끝
     // 이러면  연속된 인덱스는 m_Front 전까지다.
     //-----------------------------------
-    //if (m_Rear < m_Front && m_Front <= (RING_BUFFER_SIZE - 1))
-    //{
-    //    directSize = m_Front - m_Rear;
-    //}
 
-    if (m_Rear < m_Front)
+    if (rearNext < copyFront)
     {
-        directSize = m_Front - m_Rear-1;
+        directSize = copyFront - rearNext;
     }
     //-----------------------------------
     // 그것이 아니라면, m_Rear ~ 인덱스끝까지가 연속된 메모리 할당범위다.
     //-----------------------------------
     else
     {
-        directSize = (RING_BUFFER_SIZE - 1) - m_Rear;
+        directSize = (RING_BUFFER_SIZE - 1) - rearNext + 1;
     }
-    
+
     return directSize;
 }
 
 int32_t RingBuffer::GetDirectDequeueSize() const
 {
+    int32_t copyRear = m_Rear;
+    int32_t copyFront = m_Front;
+    
     //------------------------------------------
     // 링버퍼가 비어있다면, 0을반환
     //------------------------------------------
-    if (m_Front == m_Rear)
+    if (copyFront == copyRear)
     {
         return 0;
     }
 
+    int32_t nextFront = (copyFront + 1) % RING_BUFFER_SIZE;
 
     int32_t directSize = 0;
     //일반적인 경우
-    if (m_Front < m_Rear)
+    if (nextFront < copyRear)
     {
-        directSize = m_Rear - m_Front;
+        directSize = copyRear - nextFront+1;
     }
     else
     {
-        directSize = (RING_BUFFER_SIZE - 1) - m_Front;
+        directSize = (RING_BUFFER_SIZE - 1) - nextFront+1;
     }
-
-    //if (m_Front <= (RING_BUFFER_SIZE - 1) && 0 <= m_Rear)
-    //{
-    //    directSize = (RING_BUFFER_SIZE - 1) - m_Front;
-    //}
-    //else
-    //{
-    //    directSize = m_Rear- m_Front;
-    //}
 
     return directSize;
 
@@ -252,24 +259,161 @@ int32_t RingBuffer::GetDirectDequeueSize() const
 
 void RingBuffer::ClearBuffer()
 {
-    m_FreeSize = RING_BUFFER_SIZE;
-    m_UsedSize = 0;
     m_Front = 0;
     m_Rear = 0;
-
 }
 
-bool RingBuffer::Peek(char* data, int index)
+void RingBuffer::MoveRear(int size)
 {
-    if (index > RING_BUFFER_SIZE - 1)
+    if (size < 0)
     {
-        return false;
+        return;
+    }
+    m_Rear = (m_Rear + size) % RING_BUFFER_SIZE;
+}
+
+void RingBuffer::MoveFront(int size)
+{
+    if (size < 0)
+    {
+        return;
+    }
+    m_Front = (m_Front + size ) % RING_BUFFER_SIZE;
+}
+
+char* RingBuffer::GetFrontBufferPtr(void)
+{
+    //--------------------------------------
+    // FrontBufferPtr을 쓰려고하는것은 지금
+    // dequeue를하려는 상황인데, 큐가 비어있다면
+    // null을반환
+    //--------------------------------------
+    if (m_Front == m_Rear)
+    {
+        return nullptr;
     }
 
-    int tempFront = m_Front;
+    return m_Buffer + ((m_Front+1)% RING_BUFFER_SIZE);
+}
 
-    tempFront = (tempFront + index) % RING_BUFFER_SIZE;
+char* RingBuffer::GetRearBufferPtr(void)
+{
+    //--------------------------------------
+    // Enqueue를하려는 상황인데, 큐가 꽉차있다면,
+    // null을반환
+    //--------------------------------------
+    if ((m_Rear+1)%RING_BUFFER_SIZE == m_Front)
+    {
+        return nullptr;
+    }
 
-    *data = m_Buffer[tempFront];
-    return true;
+    return m_Buffer + ((m_Rear + 1) % RING_BUFFER_SIZE); 
+}
+
+int RingBuffer::Peek(char* dest, int size)
+{
+    //-------------------------------------------
+   //링버퍼에 사용중인 사이즈가 인자로 들어온 사이즈보다 작으면 현재 사용중인 사이즈로바꿈.
+   // Peek이기때문에 프론트 사본 만듬.
+   //-------------------------------------------
+    int32_t copyRear = m_Rear;
+    int32_t copyFront = m_Front;
+    int tempUsedSize = GetUsedSize(copyFront,copyRear);
+
+    if (tempUsedSize < size)
+    {
+        size = tempUsedSize;
+        if (size <= 0)
+        {
+            return 0;
+        }
+    }
+
+    int directSize = GetDirectDequeueSize();
+
+
+    //-----------------------------------
+    // Peek 들어오면 사본 front 는 쁠쁠 먼저하고, dequeue를한다.
+    //-----------------------------------
+    copyFront = (copyFront + 1) % RING_BUFFER_SIZE;
+
+    //-------------------------------------------
+    // 연속할당할수있는 사이즈가 들어온 사이즈보다 작다면 두번나눠서 디큐를 해야함.
+    //-------------------------------------------
+    if (directSize < size)
+    {
+        memcpy(dest, m_Buffer + copyFront, directSize);
+        copyFront = (copyFront + directSize - 1) % RING_BUFFER_SIZE;;
+
+        int diff = size - directSize;
+        copyFront = (copyFront + 1) % RING_BUFFER_SIZE;
+        memcpy(dest + directSize, m_Buffer + copyFront, diff);
+    }
+    else
+    {
+        memcpy(dest, m_Buffer + copyFront, size);
+    }
+
+    return size;
+}
+
+int32_t RingBuffer::GetDirectEnqueueSize(int32_t copyFront, int32_t copyRear) const
+{
+    //-----------------------------------
+    // 링버퍼의 사이즈가 꽉찼다면, Direct Size를 구할수 없다. 0반환
+    //-----------------------------------
+
+    if ((copyRear + 1) % RING_BUFFER_SIZE == copyFront)
+    {
+        return 0;
+    }
+
+    int directSize = 0;
+    int rearNext = (copyRear + 1) % RING_BUFFER_SIZE;
+
+    //-----------------------------------
+    // mRear < mFront < 인덱스 끝
+    // 이러면  연속된 인덱스는 m_Front 전까지다.
+    //-----------------------------------
+
+    if (rearNext < copyFront)
+    {
+        directSize = copyFront - rearNext;
+    }
+    //-----------------------------------
+    // 그것이 아니라면, m_Rear ~ 인덱스끝까지가 연속된 메모리 할당범위다.
+    //-----------------------------------
+    else
+    {
+        directSize = (RING_BUFFER_SIZE - 1) - rearNext + 1;
+    }
+
+    return directSize;
+}
+
+int32_t RingBuffer::GetDirectDequeueSize(int32_t copyFront, int32_t copyRear) const
+{
+
+    //------------------------------------------
+    // 링버퍼가 비어있다면, 0을반환
+    //------------------------------------------
+    if (copyFront == copyRear)
+    {
+        return 0;
+    }
+
+    int nextFront = (copyFront + 1) % RING_BUFFER_SIZE;
+
+    int32_t directSize = 0;
+    //일반적인 경우
+    if (nextFront < copyRear)
+    {
+        directSize = copyRear - nextFront + 1;
+    }
+    else
+    {
+        directSize = (RING_BUFFER_SIZE - 1) - nextFront + 1;
+    }
+
+    return directSize;
 }
